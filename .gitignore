@@ -1,0 +1,25 @@
+# deps
+node_modules/
+
+# builds
+dist/
+*.tsbuildinfo
+client/dist/
+
+# env — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# prisma
+server/prisma/*.db
+
+# logs & OS noise
+*.log
+.DS_Store
+Thumbs.db
+
+# editor
+.idea/
+.vscode/*
+!.vscode/extensions.json

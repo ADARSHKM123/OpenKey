@@ -1,0 +1,19 @@
+{
+  "name": "openkey",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Free, open-source, self-hosted enterprise LLM gateway. BYOK. Zero markup. Nothing phones home.",
+  "packageManager": "pnpm@11.12.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @openkey/server dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "db:migrate": "pnpm --filter @openkey/server db:migrate",
+    "db:seed": "pnpm --filter @openkey/server db:seed"
+  }
+}

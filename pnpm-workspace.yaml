@@ -1,0 +1,12 @@
+packages:
+  - shared
+  - server
+  - client
+# Native/postinstall scripts we trust: Prisma engine download, argon2 native
+# binding, esbuild binary install.
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  argon2: true
+  esbuild: true
+  prisma: true

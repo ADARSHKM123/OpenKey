@@ -1,0 +1,19 @@
+{
+  "$comment": "Reference pricing catalog, USD per 1M tokens. Seeded into model_route rows when an admin creates a route; admins can override any price in the UI (negotiated discounts are real). Updated by community PRs — prices below were checked 2026-07 and WILL drift; they are defaults, not truth.",
+  "version": "2026-07-13",
+  "models": [
+    { "provider": "bedrock", "match": "anthropic.claude-sonnet-4*", "inputCostPer1M": 3.0, "outputCostPer1M": 15.0, "cachedInputCostPer1M": 0.3, "defaultMaxTokens": 8192 },
+    { "provider": "bedrock", "match": "anthropic.claude-haiku-4*", "inputCostPer1M": 1.0, "outputCostPer1M": 5.0, "cachedInputCostPer1M": 0.1, "defaultMaxTokens": 8192 },
+    { "provider": "bedrock", "match": "anthropic.claude-opus-4*", "inputCostPer1M": 15.0, "outputCostPer1M": 75.0, "cachedInputCostPer1M": 1.5, "defaultMaxTokens": 8192 },
+    { "provider": "anthropic", "match": "claude-sonnet-4*", "inputCostPer1M": 3.0, "outputCostPer1M": 15.0, "cachedInputCostPer1M": 0.3, "defaultMaxTokens": 8192 },
+    { "provider": "anthropic", "match": "claude-haiku-4*", "inputCostPer1M": 1.0, "outputCostPer1M": 5.0, "cachedInputCostPer1M": 0.1, "defaultMaxTokens": 8192 },
+    { "provider": "anthropic", "match": "claude-opus-4*", "inputCostPer1M": 15.0, "outputCostPer1M": 75.0, "cachedInputCostPer1M": 1.5, "defaultMaxTokens": 8192 },
+    { "provider": "openai", "match": "gpt-4o", "inputCostPer1M": 2.5, "outputCostPer1M": 10.0, "cachedInputCostPer1M": 1.25, "defaultMaxTokens": 4096 },
+    { "provider": "openai", "match": "gpt-4o-mini", "inputCostPer1M": 0.15, "outputCostPer1M": 0.6, "cachedInputCostPer1M": 0.075, "defaultMaxTokens": 4096 },
+    { "provider": "openai", "match": "gpt-4.1*", "inputCostPer1M": 2.0, "outputCostPer1M": 8.0, "cachedInputCostPer1M": 0.5, "defaultMaxTokens": 8192 },
+    { "provider": "azure_openai", "match": "gpt-4o", "inputCostPer1M": 2.5, "outputCostPer1M": 10.0, "cachedInputCostPer1M": 1.25, "defaultMaxTokens": 4096 },
+    { "provider": "azure_openai", "match": "gpt-4o-mini", "inputCostPer1M": 0.15, "outputCostPer1M": 0.6, "cachedInputCostPer1M": 0.075, "defaultMaxTokens": 4096 },
+    { "provider": "ollama", "match": "*", "inputCostPer1M": 0.0, "outputCostPer1M": 0.0, "defaultMaxTokens": 4096 },
+    { "provider": "mock", "match": "*", "inputCostPer1M": 1.0, "outputCostPer1M": 2.0, "cachedInputCostPer1M": 0.1, "defaultMaxTokens": 1024 }
+  ]
+}

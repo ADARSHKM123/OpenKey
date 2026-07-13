@@ -1,0 +1,336 @@
+// OpenKey data model.
+//
+// Postgres is the source of truth for ALL configuration — the UI writes here
+// and the gateway hot-reloads via Redis pub/sub. YAML never configures a
+// running system.
+//
+// Table/column names are snake_case so that admins can run plain SQL
+// (e.g. SELECT SUM(cost_usd) FROM request_log GROUP BY team_id) without
+// fighting quoted camelCase identifiers.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+
+  @@map("role")
+}
+
+// ============ IDENTITY ============
+
+model Org {
+  id               String   @id @default(cuid())
+  name             String
+  // null = unlimited. Money is always Decimal — JS floats drift.
+  monthlyBudgetUsd Decimal? @map("monthly_budget_usd") @db.Decimal(12, 4)
+  // Per-org toggles the UI edits live.
+  settings         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  teams     Team[]
+  users     User[]
+  providers ProviderCredential[]
+  aliases   ModelAlias[]
+
+  @@map("org")
+}
+
+model Team {
+  id               String   @id @default(cuid())
+  orgId            String   @map("org_id")
+  name             String
+  monthlyBudgetUsd Decimal? @map("monthly_budget_usd") @db.Decimal(12, 4)
+  // Model alias names; empty = inherit the org's full catalog.
+  allowedModels    String[] @map("allowed_models")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  org     Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members Membership[]
+
+  @@unique([orgId, name])
+  @@map("team")
+}
+
+model User {
+  id               String   @id @default(cuid())
+  orgId            String   @map("org_id")
+  email            String
+  name             String
+  role             Role     @default(MEMBER)
+  authProvider     String   @default("local") @map("auth_provider") // "local" | "oidc" | "saml"
+  passwordHash     String?  @map("password_hash") // null when SSO
+  monthlyBudgetUsd Decimal? @map("monthly_budget_usd") @db.Decimal(12, 4)
+  // active | suspended | deprovisioned — deprovisioned exists now so SCIM (v2) drops in cleanly.
+  status           String   @default("active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  org         Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  keys        VirtualKey[]
+
+  @@unique([orgId, email])
+  @@map("user")
+}
+
+model Membership {
+  userId String @map("user_id")
+  teamId String @map("team_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([userId, teamId])
+  @@map("membership")
+}
+
+// ============ ACCESS ============
+
+model VirtualKey {
+  id               String    @id @default(cuid())
+  orgId            String    @map("org_id")
+  userId           String    @map("user_id")
+  teamId           String?   @map("team_id") // spend from this key is billed to this team
+  name             String
+  keyPrefix        String    @map("key_prefix") // "sk-ok-live-a1b2" — safe to display
+  // SHA-256 of the full key. The raw key is shown exactly once at creation
+  // and never stored — a DB leak must not leak usable credentials.
+  keyHash          String    @unique @map("key_hash")
+  allowedModels    String[]  @map("allowed_models") // [] = inherit team
+  monthlyBudgetUsd Decimal?  @map("monthly_budget_usd") @db.Decimal(12, 4)
+  rpmLimit         Int?      @map("rpm_limit")
+  tpmLimit         Int?      @map("tpm_limit")
+  ipAllowlist      String[]  @map("ip_allowlist") // CIDRs; [] = any
+  expiresAt        DateTime? @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  lastUsedAt       DateTime? @map("last_used_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("virtual_key")
+}
+
+// ============ PROVIDERS & MODELS ============
+
+model ProviderCredential {
+  id            String    @id @default(cuid())
+  orgId         String    @map("org_id")
+  provider      String // bedrock | azure_openai | anthropic | openai | vertex | ollama | mock
+  label         String // "Bedrock us-east-1 (prod)"
+  // AES-256-GCM encrypted JSON (region, endpoint, api key, IAM role…).
+  // Plaintext credentials never touch the database.
+  configEnc     Bytes     @map("config_enc")
+  enabled       Boolean   @default(true)
+  healthy       Boolean   @default(true)
+  lastCheckedAt DateTime? @map("last_checked_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  org    Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  routes ModelRoute[]
+
+  @@map("provider_credential")
+}
+
+// A ModelAlias is what the EMPLOYEE sees. It hides the provider entirely.
+model ModelAlias {
+  id          String  @id @default(cuid())
+  orgId       String  @map("org_id")
+  alias       String // "claude-smart", "fast-cheap"
+  displayName String  @map("display_name") // "Claude (best quality)"
+  description String?
+  enabled     Boolean @default(true)
+
+  org    Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  routes ModelRoute[]
+
+  @@unique([orgId, alias])
+  @@map("model_alias")
+}
+
+model ModelRoute {
+  id            String @id @default(cuid())
+  aliasId       String @map("alias_id")
+  priority      Int // 0 = primary, 1 = first fallback…
+  providerId    String @map("provider_id")
+  upstreamModel String @map("upstream_model") // "anthropic.claude-sonnet-4-v1:0"
+  weight        Int    @default(100) // load balancing within a priority tier
+
+  // Pricing is CONFIGURABLE rows, never hardcoded — admins may have
+  // negotiated discounts, and inflated cost reports are worse than none.
+  inputCostPer1M       Decimal  @map("input_cost_per_1m") @db.Decimal(10, 4)
+  outputCostPer1M      Decimal  @map("output_cost_per_1m") @db.Decimal(10, 4)
+  cachedInputCostPer1M Decimal? @map("cached_input_cost_per_1m") @db.Decimal(10, 4)
+  // Cap used for pre-flight reservations when the client omits max_tokens.
+  defaultMaxTokens     Int      @default(4096) @map("default_max_tokens")
+
+  alias    ModelAlias         @relation(fields: [aliasId], references: [id], onDelete: Cascade)
+  provider ProviderCredential @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@map("model_route")
+}
+
+// ============ MONEY ============
+// The financial source of truth. Rows are only ever RESERVED → SETTLED or
+// RESERVED → RELEASED; a row stuck in RESERVED > 15 min is a crashed request
+// that the hourly reconciler releases.
+
+model SpendLedger {
+  id          String    @id @default(cuid())
+  requestId   String    @unique @map("request_id")
+  orgId       String    @map("org_id")
+  teamId      String?   @map("team_id")
+  userId      String    @map("user_id")
+  keyId       String    @map("key_id")
+  state       String // RESERVED | SETTLED | RELEASED
+  reservedUsd Decimal   @map("reserved_usd") @db.Decimal(12, 6)
+  actualUsd   Decimal?  @map("actual_usd") @db.Decimal(12, 6)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  settledAt   DateTime? @map("settled_at")
+
+  @@index([orgId, createdAt])
+  @@index([userId, createdAt])
+  @@index([state, createdAt]) // reconciler scans RESERVED rows by age
+  @@map("spend_ledger")
+}
+
+// ============ OBSERVABILITY ============
+// request_log and request_payload are PARTITIONED BY RANGE (created_at) by
+// month (see the hand-written SQL in the initial migration — Prisma cannot
+// express partitioning). Partitioning is what makes free unlimited logging
+// survivable: retention = DROP PARTITION, not a million-row DELETE.
+//
+// Partitioned tables require the partition key in the primary key, hence the
+// composite ids. There is deliberately NO Prisma relation between the two
+// tables: Postgres cannot enforce a FK onto a non-unique column of a
+// partitioned table, so the join on request_id is application-level.
+
+model RequestLog {
+  id                String   @map("id") // == requestId
+  orgId             String   @map("org_id")
+  teamId            String?  @map("team_id")
+  userId            String   @map("user_id")
+  keyId             String   @map("key_id")
+  aliasId           String?  @map("alias_id")
+  provider          String
+  upstreamModel     String   @map("upstream_model")
+  status            Int // HTTP status returned to the client
+  errorCode         String?  @map("error_code")
+  inputTokens       Int      @default(0) @map("input_tokens")
+  outputTokens      Int      @default(0) @map("output_tokens")
+  cachedTokens      Int      @default(0) @map("cached_tokens")
+  reasoningTokens   Int      @default(0) @map("reasoning_tokens")
+  costUsd           Decimal  @map("cost_usd") @db.Decimal(12, 6)
+  cacheHit          Boolean  @default(false) @map("cache_hit")
+  fellBackFrom      String?  @map("fell_back_from") // provider that failed first
+  latencyMs         Int      @map("latency_ms")
+  ttftMs            Int?     @map("ttft_ms") // time to first token
+  streamed          Boolean  @default(false)
+  approximateCost   Boolean  @default(false) @map("approximate_cost") // tokenizer fallback was used
+  redactionsApplied Int      @default(0) @map("redactions_applied")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@id([id, createdAt])
+  @@index([orgId, createdAt])
+  @@index([userId, createdAt])
+  @@map("request_log")
+}
+
+// Separate table so hot dashboard queries never scan giant JSONB blobs.
+model RequestPayload {
+  requestId    String   @map("request_id")
+  requestBody  Json     @map("request_body") // post-redaction — this is what the model saw
+  responseBody Json?    @map("response_body")
+  // Pre-redaction original, AES-256-GCM encrypted, stored only if the org's
+  // policy enables raw-prompt retention.
+  rawPromptEnc Bytes?   @map("raw_prompt_enc")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@id([requestId, createdAt])
+  @@map("request_payload")
+}
+
+// ============ COMPLIANCE ============
+// Append-only: a DB trigger (see initial migration) rejects UPDATE and DELETE
+// outright, and rows are hash-chained (hash = sha256(prev_hash || row)) so
+// tampering by anyone with raw DB access is still evident.
+
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  orgId       String   @map("org_id")
+  actorUserId String?  @map("actor_user_id")
+  action      String // "key.created", "budget.updated", "user.suspended"
+  targetType  String   @map("target_type")
+  targetId    String   @map("target_id")
+  before      Json?
+  after       Json?
+  ip          String?
+  userAgent   String?  @map("user_agent")
+  prevHash    String?  @map("prev_hash")
+  hash        String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([orgId, createdAt])
+  @@map("audit_log")
+}
+
+// ============ CHAT UI ============
+
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  title     String
+  aliasId   String   @map("alias_id")
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  messages Message[]
+
+  @@index([userId, createdAt])
+  @@map("conversation")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  role           String // user | assistant | system
+  content        String   @db.Text
+  // Links a chat turn to its request_log row — chat spend and API spend land
+  // in the same numbers, never split.
+  requestId      String?  @map("request_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("message")
+}
+
+// ============ WORKFLOW ============
+// Employee "request more budget" → admin approval queue.
+
+model BudgetRequest {
+  id           String    @id @default(cuid())
+  orgId        String    @map("org_id")
+  userId       String    @map("user_id")
+  requestedUsd Decimal   @map("requested_usd") @db.Decimal(12, 4)
+  reason       String?
+  status       String    @default("pending") // pending | approved | denied
+  decidedBy    String?   @map("decided_by")
+  decidedAt    DateTime? @map("decided_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([orgId, status])
+  @@map("budget_request")
+}
