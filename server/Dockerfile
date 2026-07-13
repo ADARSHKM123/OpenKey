@@ -7,10 +7,15 @@ RUN corepack enable
 WORKDIR /app
 
 # Install with just the manifests first so Docker layer cache survives code edits.
+# All three workspace manifests must be present or the lockfile's importer
+# set won't match and pnpm silently under-installs.
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY shared/package.json shared/
 COPY server/package.json server/
-RUN pnpm install --frozen-lockfile --filter @openkey/server...
+COPY client/package.json client/
+# shared must be matched directly (not just pulled in via `...`) or pnpm
+# skips its devDependencies and its tsc build fails.
+RUN pnpm install --frozen-lockfile --filter @openkey/server... --filter @openkey/shared
 
 COPY tsconfig.base.json ./
 COPY shared shared
@@ -20,7 +25,7 @@ RUN pnpm --filter @openkey/server exec prisma generate \
   && pnpm --filter @openkey/server build
 
 # Self-contained production bundle (node_modules resolved, workspace links inlined).
-RUN pnpm --filter @openkey/server --prod deploy /out \
+RUN pnpm --filter @openkey/server --prod deploy --legacy /out \
   && cp -r server/dist /out/dist \
   && cp -r server/prisma /out/prisma
 

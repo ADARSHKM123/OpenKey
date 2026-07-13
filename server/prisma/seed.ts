@@ -10,7 +10,7 @@
 
 import { PrismaClient } from "@prisma/client";
 import argon2 from "argon2";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -118,6 +118,31 @@ async function main(): Promise<void> {
       },
     });
     console.log(`[seed] created alias "mock-fast" → mock/mock-small`);
+  }
+
+  // A dev virtual key so the gateway can be exercised with cURL immediately.
+  // Raw key printed once; only its SHA-256 is stored — same rule as prod.
+  const admin = existingAdmin ?? (await prisma.user.findUniqueOrThrow({
+    where: { orgId_email: { orgId: org.id, email: adminEmail } },
+  }));
+  const existingKey = await prisma.virtualKey.findFirst({ where: { userId: admin.id } });
+  if (!existingKey) {
+    const rawKey = `sk-ok-live-${randomBytes(24).toString("hex")}`;
+    await prisma.virtualKey.create({
+      data: {
+        orgId: org.id,
+        userId: admin.id,
+        name: "Dev key (seeded)",
+        keyPrefix: rawKey.slice(0, 15),
+        keyHash: createHash("sha256").update(rawKey).digest("hex"),
+        monthlyBudgetUsd: 50,
+      },
+    });
+    console.log("=".repeat(64));
+    console.log(`[seed] Dev API key created ($50/month budget)`);
+    console.log(`[seed]   ${rawKey}`);
+    console.log(`[seed] Shown ONCE — only its hash is stored.`);
+    console.log("=".repeat(64));
   }
 
   console.log("[seed] done");

@@ -1,9 +1,7 @@
-import Fastify from "fastify";
 import { pino } from "pino";
 import { loadEnv } from "./config/env.js";
-
-// M0 boot stub: env validation + health endpoint. The gateway (/v1) and
-// control plane (/api) mount here as separate Fastify plugins in M1/M3.
+import { buildApp } from "./app.js";
+import { startReconciler } from "./jobs/reconciler.js";
 
 const env = loadEnv();
 
@@ -19,19 +17,21 @@ const logger = pino({
       "*.password",
       "*.passwordHash",
       "*.secretAccessKey",
+      "*.sessionToken",
     ],
     censor: "[REDACTED]",
   },
 });
 
-const app = Fastify({
-  logger,
-  // requestId on every log line — pino + Fastify propagate this automatically.
-  genReqId: () => crypto.randomUUID(),
-  disableRequestLogging: true,
-});
+const { app, services, shutdown } = await buildApp(env, logger);
+startReconciler(services.prisma, services.budget, logger);
 
-app.get("/healthz", async () => ({ status: "ok", service: "openkey" }));
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    logger.info({ signal }, "shutting down");
+    void shutdown().finally(() => process.exit(0));
+  });
+}
 
 try {
   await app.listen({ port: env.OPENKEY_PORT, host: "0.0.0.0" });

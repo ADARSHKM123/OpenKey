@@ -1,0 +1,11 @@
+# Never let host installs or secrets leak into image build contexts.
+# COPYing a host node_modules over the container's install silently breaks
+# pnpm's symlink layout — this file is load-bearing.
+node_modules
+**/node_modules
+**/dist
+.git
+.env
+.env.*
+!.env.example
+*.log

@@ -4,10 +4,15 @@ FROM node:22-alpine AS build
 RUN corepack enable
 WORKDIR /app
 
+# All three workspace manifests must be present or the lockfile's importer
+# set won't match and pnpm silently under-installs.
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY shared/package.json shared/
+COPY server/package.json server/
 COPY client/package.json client/
-RUN pnpm install --frozen-lockfile --filter @openkey/client...
+# shared must be matched directly (not just pulled in via `...`) or pnpm
+# skips its devDependencies and its tsc build fails.
+RUN pnpm install --frozen-lockfile --filter @openkey/client... --filter @openkey/shared
 
 COPY tsconfig.base.json ./
 COPY shared shared
