@@ -19,6 +19,41 @@ export const ProviderKindSchema = z.enum([
 ]);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
+// ============ OpenAI-compatible chat completions ============
+// Validated at the gateway edge; unknown provider-specific fields are
+// deliberately passed through so new upstream features work day one.
+
+const ContentPartSchema = z.union([
+  z.object({ type: z.literal("text"), text: z.string() }),
+  z.object({
+    type: z.literal("image_url"),
+    image_url: z.object({ url: z.string(), detail: z.string().optional() }),
+  }),
+]);
+
+export const ChatMessageSchema = z.object({
+  role: z.enum(["system", "user", "assistant", "tool"]),
+  content: z.union([z.string(), z.array(ContentPartSchema), z.null()]),
+  name: z.string().optional(),
+});
+export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+
+export const ChatCompletionRequestSchema = z
+  .object({
+    model: z.string().min(1),
+    messages: z.array(ChatMessageSchema).min(1),
+    stream: z.boolean().optional(),
+    max_tokens: z.number().int().positive().optional(),
+    max_completion_tokens: z.number().int().positive().optional(),
+    temperature: z.number().min(0).max(2).optional(),
+    top_p: z.number().min(0).max(1).optional(),
+    stop: z.union([z.string(), z.array(z.string())]).optional(),
+    n: z.literal(1).optional(), // multiple choices are not supported; budget math assumes one
+    user: z.string().optional(),
+  })
+  .passthrough();
+export type ChatCompletionRequest = z.infer<typeof ChatCompletionRequestSchema>;
+
 // The gateway always returns OpenAI-shaped errors — clients parse this shape.
 export interface OpenAIErrorBody {
   error: {

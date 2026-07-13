@@ -19,11 +19,14 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1085.0",
     "@openkey/shared": "workspace:*",
     "@prisma/client": "^5.22.0",
     "argon2": "^0.41.1",
     "fastify": "^4.28.1",
     "ioredis": "^5.4.1",
+    "ipaddr.js": "^2.4.0",
+    "js-tiktoken": "^1.0.21",
     "pino": "^9.5.0",
     "prisma": "^5.22.0",
     "zod": "^3.23.8"

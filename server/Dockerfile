@@ -1,5 +1,8 @@
 # ---- build stage ----
-FROM node:20-alpine AS build
+# node:22 here only because pnpm 11 requires Node >= 22 (node:sqlite). The
+# runtime stage below stays on Node 20 per the locked stack; argon2 (N-API)
+# and Prisma engines are ABI-compatible across the two.
+FROM node:22-alpine AS build
 RUN corepack enable
 WORKDIR /app
 

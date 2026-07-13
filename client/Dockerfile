@@ -1,5 +1,6 @@
 # ---- build stage ----
-FROM node:20-alpine AS build
+# node:22 because pnpm 11 requires Node >= 22; output is static files.
+FROM node:22-alpine AS build
 RUN corepack enable
 WORKDIR /app
 
