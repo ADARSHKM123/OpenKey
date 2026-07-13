@@ -120,6 +120,58 @@ async function main(): Promise<void> {
     console.log(`[seed] created alias "mock-fast" → mock/mock-small`);
   }
 
+  // "mock-ha": a permanently-failing primary in front of a healthy fallback,
+  // so fallback chains and circuit breakers are testable with cURL alone.
+  let failingProvider = await prisma.providerCredential.findFirst({
+    where: { orgId: org.id, provider: "mock", label: "Mock provider (always fails)" },
+  });
+  if (!failingProvider) {
+    failingProvider = await prisma.providerCredential.create({
+      data: {
+        orgId: org.id,
+        provider: "mock",
+        label: "Mock provider (always fails)",
+        configEnc: encryptJson({ alwaysFail: true }, masterKey),
+      },
+    });
+  }
+  const haAlias = await prisma.modelAlias.upsert({
+    where: { orgId_alias: { orgId: org.id, alias: "mock-ha" } },
+    update: {},
+    create: {
+      orgId: org.id,
+      alias: "mock-ha",
+      displayName: "Mock HA (dev only)",
+      description: "Primary route always fails; proves fallback + circuit breaker.",
+    },
+  });
+  const haRoutes = await prisma.modelRoute.findFirst({ where: { aliasId: haAlias.id } });
+  if (!haRoutes) {
+    await prisma.modelRoute.createMany({
+      data: [
+        {
+          aliasId: haAlias.id,
+          priority: 0,
+          providerId: failingProvider.id,
+          upstreamModel: "mock-small",
+          inputCostPer1M: mockPrice.inputCostPer1M,
+          outputCostPer1M: mockPrice.outputCostPer1M,
+          defaultMaxTokens: mockPrice.defaultMaxTokens,
+        },
+        {
+          aliasId: haAlias.id,
+          priority: 1,
+          providerId: mockProvider.id,
+          upstreamModel: "mock-small",
+          inputCostPer1M: mockPrice.inputCostPer1M,
+          outputCostPer1M: mockPrice.outputCostPer1M,
+          defaultMaxTokens: mockPrice.defaultMaxTokens,
+        },
+      ],
+    });
+    console.log(`[seed] created alias "mock-ha" (failing primary → healthy fallback)`);
+  }
+
   // A dev virtual key so the gateway can be exercised with cURL immediately.
   // Raw key printed once; only its SHA-256 is stored — same rule as prod.
   const admin = existingAdmin ?? (await prisma.user.findUniqueOrThrow({

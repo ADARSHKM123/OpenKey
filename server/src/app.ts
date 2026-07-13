@@ -13,6 +13,7 @@ import { KeyAuthService } from "./gateway/auth.js";
 import { ModelRegistry } from "./gateway/registry.js";
 import { BudgetService } from "./gateway/budget.js";
 import { SettleQueue } from "./gateway/settle.js";
+import { CircuitBreaker } from "./gateway/breaker.js";
 import { gatewayPlugin } from "./gateway/plugin.js";
 
 // Composition root. Two planes, one process: the gateway (/v1/*) and the
@@ -27,6 +28,7 @@ export interface AppServices {
   registry: ModelRegistry;
   budget: BudgetService;
   settle: SettleQueue;
+  breaker: CircuitBreaker;
 }
 
 // Fastify's instance type carries the logger's concrete type; ours is pino.
@@ -52,6 +54,7 @@ export async function buildApp(env: Env, logger: Logger): Promise<BuiltApp> {
   const registry = new ModelRegistry(prisma, env.OPENKEY_MASTER_KEY, logger);
   const budget = new BudgetService(redis);
   const settle = new SettleQueue(prisma, logger);
+  const breaker = new CircuitBreaker();
 
   await budget.load();
   await registry.reload();
@@ -83,9 +86,9 @@ export async function buildApp(env: Env, logger: Logger): Promise<BuiltApp> {
 
   app.get("/healthz", async () => ({ status: "ok", service: "openkey" }));
 
-  await app.register(gatewayPlugin({ auth, registry, budget, settle }));
+  await app.register(gatewayPlugin({ auth, registry, budget, settle, breaker }));
 
-  const services: AppServices = { prisma, redis, redisSub, auth, registry, budget, settle };
+  const services: AppServices = { prisma, redis, redisSub, auth, registry, budget, settle, breaker };
 
   const shutdown = async (): Promise<void> => {
     registry.stop();

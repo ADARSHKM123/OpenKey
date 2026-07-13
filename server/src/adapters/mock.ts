@@ -31,8 +31,13 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 export class MockAdapter implements ProviderAdapter {
   readonly kind = "mock" as const;
 
-  async *chat(req: AdapterRequest, _config: unknown, signal: AbortSignal): AsyncIterable<StreamEvent> {
+  async *chat(req: AdapterRequest, config: unknown, signal: AbortSignal): AsyncIterable<StreamEvent> {
     const prompt = lastUserText(req);
+    // A credential-level failure switch lets fallback/breaker tests wire a
+    // permanently-broken primary in front of a healthy secondary.
+    if ((config as { alwaysFail?: boolean } | null)?.alwaysFail) {
+      throw new UpstreamError(503, "mock provider (alwaysFail) is down", true);
+    }
     if (directive(prompt, "fail") !== undefined && directive(prompt, "fail-mid") === undefined) {
       throw new UpstreamError(503, "mock provider was asked to fail", true);
     }

@@ -17,6 +17,7 @@ import { effectiveAllowedModels } from "./auth.js";
 import type { BudgetLimitsMicro, BudgetScopeIds, BudgetService } from "./budget.js";
 import type { AliasEntry, ModelRegistry, ResolvedRoute } from "./registry.js";
 import type { SettleQueue } from "./settle.js";
+import type { CircuitBreaker } from "./breaker.js";
 import { chunkEnvelope, completionBody, sseHeaders, writeChunk, writeDone } from "./sse.js";
 
 // The most important file in the codebase: the exact request lifecycle from
@@ -29,6 +30,7 @@ export interface GatewayDeps {
   registry: ModelRegistry;
   budget: BudgetService;
   settle: SettleQueue;
+  breaker: CircuitBreaker;
 }
 
 const KILL_SWITCH_HEADROOM = 1.05;
@@ -257,12 +259,16 @@ async function runUpstream(args: RunArgs): Promise<unknown> {
 
   let fellBackFrom: string | null = null;
   let lastError: unknown = null;
+  const ATTEMPTS_PER_ROUTE = 2;
 
-  for (let attempt = 0; attempt < args.routes.length; attempt++) {
-    const route = args.routes[attempt] as ResolvedRoute;
+  for (const route of args.routes) {
+    // SPEC §5 step 2: routes with an OPEN circuit breaker are skipped.
+    if (!deps.breaker.allow(route.providerId)) continue;
+
     const adapter = getAdapter(route.providerKind);
     if (!adapter) {
       lastError = new AppError(502, "upstream_error", `No adapter for provider '${route.providerKind}'.`);
+      deps.breaker.recordFailure(route.providerId);
       continue;
     }
 
@@ -275,30 +281,49 @@ async function runUpstream(args: RunArgs): Promise<unknown> {
       stop: typeof body.stop === "string" ? [body.stop] : body.stop,
     };
 
-    try {
-      return await consumeStream({ ...args, route, adapter: adapter.chat(adapterReq, route.config, abort.signal), abort, streamed, created, fellBackFrom });
-    } catch (err) {
-      // Fallback is only legal BEFORE the first byte reached the client — a
-      // silent provider switch mid-stream would corrupt the response, so
-      // consumeStream rethrows with sentBytes=true and we fail honestly.
-      const canRetry =
-        err instanceof UpstreamError && err.retryable && !(err as UpstreamError & { sentBytes?: boolean }).sentBytes;
-      lastError = err;
-      if (!canRetry) break;
-      fellBackFrom = route.providerKind;
-      request.log.warn(
-        { requestId: args.requestId, provider: route.providerKind, err: (err as Error).message },
-        "route failed; falling back",
-      );
+    let advance = false;
+    for (let attempt = 0; attempt < ATTEMPTS_PER_ROUTE; attempt++) {
+      try {
+        const result = await consumeStream({ ...args, route, adapter: adapter.chat(adapterReq, route.config, abort.signal), abort, streamed, created, fellBackFrom });
+        deps.breaker.recordSuccess(route.providerId);
+        return result;
+      } catch (err) {
+        lastError = err;
+        // Fallback is only legal BEFORE the first byte reached the client — a
+        // silent provider switch mid-stream would corrupt the response, so
+        // consumeStream rethrows with sentBytes=true and we fail honestly.
+        const retryable =
+          err instanceof UpstreamError && err.retryable && !(err as UpstreamError & { sentBytes?: boolean }).sentBytes;
+        deps.breaker.recordFailure(route.providerId);
+        if (!retryable) return failAllRoutes(lastError);
+        request.log.warn(
+          { requestId: args.requestId, provider: route.providerKind, attempt, err: (err as Error).message },
+          "upstream attempt failed",
+        );
+        if (attempt + 1 < ATTEMPTS_PER_ROUTE) {
+          // Exponential backoff with full jitter, kept small: the client is
+          // waiting on first byte through all of this.
+          await sleep(Math.random() * 200 * 2 ** attempt);
+        } else {
+          advance = true;
+        }
+      }
     }
+    if (advance) fellBackFrom = route.providerKind;
   }
 
+  return failAllRoutes(lastError);
+}
+
+function failAllRoutes(lastError: unknown): never {
   if (lastError instanceof AppError) throw lastError;
   if (lastError instanceof UpstreamError) {
     throw AppError.upstream(lastError.status, lastError.message);
   }
   throw AppError.upstream(502, "All upstreams failed.");
 }
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 interface ConsumeArgs extends RunArgs {
   route: ResolvedRoute;
