@@ -14,6 +14,10 @@ import { AdminLogs } from "./pages/admin/Logs";
 import { AdminApprovals } from "./pages/admin/Approvals";
 import { AdminAudit } from "./pages/admin/Audit";
 import { AdminSettings } from "./pages/admin/Settings";
+import { KeysProvider } from "./context/KeysContext";
+import { PortalHome } from "./pages/portal/Home";
+import { PortalKeys } from "./pages/portal/Keys";
+import { PortalUsage } from "./pages/portal/Usage";
 
 function Boot() {
   const { status, user } = useAuthState();
@@ -47,8 +51,9 @@ function Boot() {
           <Route path="/admin/audit" element={<AdminAudit />} />
           <Route path="/admin/settings" element={<AdminSettings />} />
         </Route>
-        {/* Portal (M5) and Chat (M6) mount here. */}
-        <Route path="/portal/*" element={<ComingSoon label="Employee portal" />} />
+        <Route path="/portal" element={<PortalHome />} />
+        <Route path="/portal/keys" element={<PortalKeys />} />
+        <Route path="/portal/usage" element={<PortalUsage />} />
         <Route path="/chat" element={<ComingSoon label="Chat" />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -80,7 +85,9 @@ export function App() {
     <BrowserRouter>
       <ToastProvider>
         <AuthProvider>
-          <Boot />
+          <KeysProvider>
+            <Boot />
+          </KeysProvider>
         </AuthProvider>
       </ToastProvider>
     </BrowserRouter>
