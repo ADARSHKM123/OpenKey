@@ -15,6 +15,7 @@ import { BudgetService } from "./gateway/budget.js";
 import { SettleQueue } from "./gateway/settle.js";
 import { CircuitBreaker } from "./gateway/breaker.js";
 import { gatewayPlugin } from "./gateway/plugin.js";
+import { controlPlanePlugin } from "./controlplane/plugin.js";
 
 // Composition root. Two planes, one process: the gateway (/v1/*) and the
 // control plane (/api/*, M3) are separate plugins with separate middleware so
@@ -86,7 +87,10 @@ export async function buildApp(env: Env, logger: Logger): Promise<BuiltApp> {
 
   app.get("/healthz", async () => ({ status: "ok", service: "openkey" }));
 
+  // Two planes, one process: /v1/* (data) and /api/* (control), each an
+  // encapsulated plugin with its own error handling and middleware.
   await app.register(gatewayPlugin({ auth, registry, budget, settle, breaker }));
+  await app.register(controlPlanePlugin({ prisma, redis, env, logger }));
 
   const services: AppServices = { prisma, redis, redisSub, auth, registry, budget, settle, breaker };
 

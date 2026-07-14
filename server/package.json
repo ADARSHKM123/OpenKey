@@ -13,13 +13,15 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "audit:verify": "tsx scripts/verify-audit-chain.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1085.0",
+    "@fastify/cookie": "^9.4.0",
     "@openkey/shared": "workspace:*",
     "@prisma/client": "^5.22.0",
     "argon2": "^0.41.1",

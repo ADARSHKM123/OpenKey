@@ -3,21 +3,9 @@
 
 import { z } from "zod";
 
+export * from "./api.js";
+
 export const OPENKEY_KEY_PREFIX = "sk-ok-live-";
-
-export const RoleSchema = z.enum(["OWNER", "ADMIN", "MEMBER", "VIEWER"]);
-export type Role = z.infer<typeof RoleSchema>;
-
-export const ProviderKindSchema = z.enum([
-  "bedrock",
-  "azure_openai",
-  "anthropic",
-  "openai",
-  "vertex",
-  "ollama",
-  "mock",
-]);
-export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
 // ============ OpenAI-compatible chat completions ============
 // Validated at the gateway edge; unknown provider-specific fields are
