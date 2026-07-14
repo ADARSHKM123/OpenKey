@@ -46,6 +46,13 @@ pnpm db:seed                       # dev org + owner + zero-cost mock model
 pnpm dev                           # server on :4000; `pnpm --filter @openkey/client dev` for the SPA on :3000
 ```
 
+## Docs
+
+- [docs/SPEC.md](docs/SPEC.md) — the full architecture and product spec
+- [docs/security.md](docs/security.md) — egress audit, secrets handling, tamper evidence
+- [docs/performance.md](docs/performance.md) — load-test methodology and reference numbers
+- [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, code rules, adding providers
+
 ## License
 
 [Apache 2.0](LICENSE)

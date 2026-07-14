@@ -19,7 +19,7 @@ import type { AliasEntry, ModelRegistry, ResolvedRoute } from "./registry.js";
 import type { SettleQueue } from "./settle.js";
 import type { CircuitBreaker } from "./breaker.js";
 import { runGuardrails, type OrgGuardrailSettings } from "../guardrails/index.js";
-import { chunkEnvelope, completionBody, sseHeaders, writeChunk, writeDone } from "./sse.js";
+import { chunkEnvelope, completionBody, primeDeltaFastPath, sseHeaders, writeChunk, writeDelta, writeDone } from "./sse.js";
 
 // The most important file in the codebase: the exact request lifecycle from
 // docs/SPEC.md §5. Order is load-bearing — reserve BEFORE the upstream call
@@ -356,6 +356,26 @@ async function consumeStream(args: ConsumeArgs): Promise<unknown> {
 
   let text = "";
   let outputTokensSoFar = 0;
+  // Tokenizing every tiny delta at 200 concurrent streams costs real event-
+  // loop time. Batch: exact-tokenize accumulated text every ~400 chars, with
+  // a conservative chars/3 running estimate in between (overestimates, so
+  // the kill-switch can only fire early, never late — safe for money).
+  let untokenized = "";
+  const outputTokensNow = (): number =>
+    outputTokensSoFar + (untokenized.length > 0 ? Math.ceil(untokenized.length / 3) : 0);
+  const absorbDelta = (delta: string): void => {
+    untokenized += delta;
+    if (untokenized.length >= 400) {
+      outputTokensSoFar += countText(untokenized);
+      untokenized = "";
+    }
+  };
+  const settleTokenCount = (): void => {
+    if (untokenized.length > 0) {
+      outputTokensSoFar += countText(untokenized);
+      untokenized = "";
+    }
+  };
   let ttftMs: number | null = null;
   let sentRole = false;
   let realUsage: Usage | null = null;
@@ -379,21 +399,24 @@ async function consumeStream(args: ConsumeArgs): Promise<unknown> {
   };
   if (args.streamed) reply.raw.on("close", onClose);
 
-  const usageNow = (): Usage =>
-    realUsage ?? {
+  const usageNow = (): Usage => {
+    if (realUsage) return realUsage;
+    settleTokenCount(); // exact count for anything that gets billed
+    return {
       inputTokens: args.inputEstimateTokens,
       outputTokens: outputTokensSoFar,
       cachedTokens: 0,
       reasoningTokens: 0,
       approximate: true,
     };
+  };
 
   try {
     for await (const event of args.adapter) {
       if (event.type === "delta") {
         if (ttftMs === null) ttftMs = Date.now() - startedAt;
         text += event.text;
-        outputTokensSoFar += countText(event.text);
+        absorbDelta(event.text);
 
         if (args.streamed) {
           // Belt-and-braces: a dead socket that somehow missed 'close' still
@@ -403,14 +426,15 @@ async function consumeStream(args: ConsumeArgs): Promise<unknown> {
             if (!sentRole) {
               sseHeaders(reply);
               writeChunk(reply, envelope, { role: "assistant", content: "" }, null);
+              primeDeltaFastPath(envelope);
               sentRole = true;
             }
-            writeChunk(reply, envelope, { content: event.text }, null);
+            writeDelta(reply, envelope, event.text);
           }
         }
 
         // ---- 7. MID-STREAM ENFORCEMENT ----
-        const costSoFar = inputCostSoFar + tokenCostMicro(outputTokensSoFar, route.outputCostPer1M);
+        const costSoFar = inputCostSoFar + tokenCostMicro(outputTokensNow(), route.outputCostPer1M);
         if (costSoFar > args.reservedMicro * KILL_SWITCH_HEADROOM) {
           killedByBudget = true;
         } else if (Date.now() - lastCeilingCheck > MIDSTREAM_CHECK_INTERVAL_MS) {

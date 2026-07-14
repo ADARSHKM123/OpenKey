@@ -31,6 +31,8 @@ RUN pnpm --filter @openkey/server --prod deploy --legacy /out \
 
 # ---- runtime stage ----
 FROM node:20-alpine
+# Prisma's engines link against libssl 3, which node:20-alpine doesn't ship.
+RUN apk add --no-cache openssl
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /out .

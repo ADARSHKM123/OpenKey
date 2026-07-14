@@ -12,6 +12,9 @@ import { countText, estimateInputTokens } from "../lib/tokenizer.js";
 //   "mock:fail-mid"     → fail after the first chunk (stream corruption honesty test)
 
 const SENTENCE = "The quick brown fox jumps over the lazy dog. ";
+// Tokenized once — a real provider spends zero of OUR event loop per chunk,
+// so the mock shouldn't either.
+const SENTENCE_TOKENS = countText(SENTENCE);
 
 function lastUserText(req: AdapterRequest): string {
   for (let i = req.messages.length - 1; i >= 0; i--) {
@@ -52,7 +55,7 @@ export class MockAdapter implements ProviderAdapter {
     while (emitted < wantTokens) {
       if (signal.aborted) return;
       let chunk = SENTENCE;
-      let chunkTokens = countText(chunk);
+      let chunkTokens = SENTENCE_TOKENS;
       // Real providers never exceed max_tokens; neither may the mock — the
       // kill-switch tests depend on reservations being an upper bound.
       while (emitted + chunkTokens > wantTokens && chunk.includes(" ")) {

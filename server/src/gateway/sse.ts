@@ -24,7 +24,24 @@ export function chunkEnvelope(requestId: string, model: string, created: number)
     object: "chat.completion.chunk" as const,
     created,
     model,
+    // Serialized once per request: at hundreds of concurrent streams the
+    // per-delta JSON.stringify of the full envelope is measurable event-loop
+    // time. Deltas use prefix + JSON.stringify(text) + suffix instead.
+    deltaPrefix: "" as string,
   };
+}
+
+export function primeDeltaFastPath(envelope: ReturnType<typeof chunkEnvelope>): void {
+  envelope.deltaPrefix =
+    `data: {"id":${JSON.stringify(envelope.id)},"object":"chat.completion.chunk",` +
+    `"created":${envelope.created},"model":${JSON.stringify(envelope.model)},` +
+    `"choices":[{"index":0,"delta":{"content":`;
+}
+
+const DELTA_SUFFIX = `},"finish_reason":null}]}\n\n`;
+
+export function writeDelta(reply: FastifyReply, envelope: ReturnType<typeof chunkEnvelope>, text: string): void {
+  reply.raw.write(envelope.deltaPrefix + JSON.stringify(text) + DELTA_SUFFIX);
 }
 
 export function writeChunk(
@@ -34,8 +51,9 @@ export function writeChunk(
   finishReason: string | null,
   usage?: UsagePayload,
 ): void {
+  const { deltaPrefix: _omit, ...head } = envelope;
   const body = {
-    ...envelope,
+    ...head,
     choices: [{ index: 0, delta, finish_reason: finishReason }],
     ...(usage ? { usage } : {}),
   };
