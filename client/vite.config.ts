@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3000,
+    port: Number(process.env.PORT) || 3005,
     proxy: {
       // Local dev mirrors the nginx routing used in docker compose.
       "/api": "http://localhost:4000",

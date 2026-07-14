@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg text-zinc-200 font-sans text-sm antialiased;
+  }
+  /* Money and token counts must not wiggle as digits change. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  *:focus-visible {
+    @apply outline-none ring-2 ring-accent/60 ring-offset-1 ring-offset-bg;
+  }
+  ::selection {
+    @apply bg-accent/25;
+  }
+  /* Quiet scrollbars that match the surface. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2e2e35 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #2e2e35;
+    border-radius: 4px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
