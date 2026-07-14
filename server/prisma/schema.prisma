@@ -73,6 +73,11 @@ model User {
   monthlyBudgetUsd Decimal? @map("monthly_budget_usd") @db.Decimal(12, 4)
   // active | suspended | deprovisioned — deprovisioned exists now so SCIM (v2) drops in cleanly.
   status           String   @default("active")
+  // AES-256-GCM encrypted raw key of this user's internal "system:chat"
+  // virtual key. The chat backend presents it to the gateway's own /v1 so
+  // chat traffic flows through the ONE hot path with normal budgets,
+  // attribution and logging. Never exposed via any API.
+  chatKeyEnc       Bytes?   @map("chat_key_enc")
   createdAt        DateTime @default(now()) @map("created_at")
 
   org         Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -334,3 +339,4 @@ model BudgetRequest {
   @@index([orgId, status])
   @@map("budget_request")
 }
+

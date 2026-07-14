@@ -18,6 +18,8 @@ import { KeysProvider } from "./context/KeysContext";
 import { PortalHome } from "./pages/portal/Home";
 import { PortalKeys } from "./pages/portal/Keys";
 import { PortalUsage } from "./pages/portal/Usage";
+import { ChatProvider } from "./context/ChatContext";
+import { ChatPage } from "./pages/chat/Chat";
 
 function Boot() {
   const { status, user } = useAuthState();
@@ -54,7 +56,14 @@ function Boot() {
         <Route path="/portal" element={<PortalHome />} />
         <Route path="/portal/keys" element={<PortalKeys />} />
         <Route path="/portal/usage" element={<PortalUsage />} />
-        <Route path="/chat" element={<ComingSoon label="Chat" />} />
+        <Route
+          path="/chat"
+          element={
+            <ChatProvider>
+              <ChatPage />
+            </ChatProvider>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

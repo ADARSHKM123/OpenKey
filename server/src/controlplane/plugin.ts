@@ -12,6 +12,7 @@ import { aliasRoutes } from "./aliases.js";
 import { orgRoutes } from "./org.js";
 import { logRoutes } from "./logs.js";
 import { budgetRequestRoutes } from "./budgetRequests.js";
+import { chatRoutes } from "./chat.js";
 
 // The CONTROL PLANE (/api/*). Cookie+JWT auth, Prisma freely allowed — this
 // plane is never on the token hot path. Registered as one encapsulated
@@ -49,5 +50,6 @@ export function controlPlanePlugin(deps: ControlDeps) {
     await app.register(orgRoutes(deps));
     await app.register(logRoutes(deps));
     await app.register(budgetRequestRoutes(deps));
+    await app.register(chatRoutes(deps));
   };
 }

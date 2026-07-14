@@ -57,7 +57,9 @@ export function keyRoutes(deps: ControlDeps) {
       const isAdmin = session.role === "ADMIN" || session.role === "OWNER";
       const userId = isAdmin && query.userId ? query.userId : session.sub;
       const keys = await deps.prisma.virtualKey.findMany({
-        where: { userId, orgId: session.org },
+        // system:chat is internal plumbing for the chat backend, not a
+        // user-manageable credential.
+        where: { userId, orgId: session.org, name: { not: "system:chat" } },
         orderBy: { createdAt: "desc" },
       });
       return keys.map(keyView);
