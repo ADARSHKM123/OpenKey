@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuthActions } from "../hooks/useAuthActions";
 import { Button } from "../components/ui/button";
 import { Input, Label } from "../components/ui/input";
+import { useQuery } from "../hooks/useQuery";
 
 export function LoginPage() {
   const { login } = useAuthActions();
@@ -11,6 +12,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { data: methods } = useQuery<{ local: boolean; oidc: boolean }>("/api/auth/methods");
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -72,6 +74,21 @@ export function LoginPage() {
           <Button type="submit" variant="primary" loading={busy} className="w-full">
             Sign in
           </Button>
+          {methods?.oidc && (
+            <>
+              <div className="my-4 flex items-center gap-3">
+                <div className="h-px flex-1 bg-line" />
+                <span className="text-2xs text-zinc-600">or</span>
+                <div className="h-px flex-1 bg-line" />
+              </div>
+              <a
+                href="/api/auth/oidc/login"
+                className="flex h-[34px] w-full items-center justify-center rounded border border-line-strong bg-surface-2 text-sm font-medium text-zinc-200 hover:bg-surface-3"
+              >
+                Continue with SSO
+              </a>
+            </>
+          )}
         </form>
         <p className="mt-4 text-center text-2xs text-zinc-600">
           Your prompts, logs and spend never leave this deployment.

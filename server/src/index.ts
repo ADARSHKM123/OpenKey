@@ -2,6 +2,7 @@ import { pino } from "pino";
 import { loadEnv } from "./config/env.js";
 import { buildApp } from "./app.js";
 import { startReconciler } from "./jobs/reconciler.js";
+import { startAlertJob } from "./jobs/alerts.js";
 import { bootstrapFirstBoot } from "./controlplane/bootstrap.js";
 
 const env = loadEnv();
@@ -29,6 +30,7 @@ await bootstrapFirstBoot(services.prisma, env, logger);
 // The bootstrap may have created the first org; the registry loaded before it.
 await services.registry.reload();
 startReconciler(services.prisma, services.budget, logger);
+startAlertJob(services.prisma, services.redis, logger);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {

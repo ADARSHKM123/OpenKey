@@ -15,6 +15,9 @@ interface Org {
     adminCanViewPrompts?: boolean;
     storeRawPrompts?: boolean;
     logRetentionDays?: number;
+    redactPii?: boolean;
+    detectInjection?: boolean;
+    alertWebhookUrl?: string | null;
   };
 }
 
@@ -25,6 +28,9 @@ export function AdminSettings() {
   const [budget, setBudget] = useState("");
   const [retention, setRetention] = useState("90");
   const [adminPrompts, setAdminPrompts] = useState(true);
+  const [redactPii, setRedactPii] = useState(false);
+  const [detectInjection, setDetectInjection] = useState(false);
+  const [webhook, setWebhook] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -33,6 +39,9 @@ export function AdminSettings() {
     setBudget(org.monthlyBudgetUsd ?? "");
     setRetention(String(org.settings.logRetentionDays ?? 90));
     setAdminPrompts(org.settings.adminCanViewPrompts !== false);
+    setRedactPii(org.settings.redactPii === true);
+    setDetectInjection(org.settings.detectInjection === true);
+    setWebhook(org.settings.alertWebhookUrl ?? "");
   }, [org]);
 
   const submit = async (e: FormEvent) => {
@@ -47,6 +56,9 @@ export function AdminSettings() {
           settings: {
             logRetentionDays: Number(retention) || 90,
             adminCanViewPrompts: adminPrompts,
+            redactPii,
+            detectInjection,
+            alertWebhookUrl: webhook.trim() === "" ? null : webhook.trim(),
           },
         },
       });
@@ -110,6 +122,58 @@ export function AdminSettings() {
                     Whole monthly partitions older than this are dropped — cheap at any volume.
                   </p>
                 </div>
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader title="Guardrails" description="Applied before any request leaves your network" />
+              <CardBody className="space-y-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={redactPii}
+                    onChange={(e) => setRedactPii(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-emerald-500"
+                  />
+                  <span>
+                    <span className="block text-sm text-zinc-200">Redact PII before sending upstream</span>
+                    <span className="mt-0.5 block text-xs text-zinc-500">
+                      Emails, phone numbers, credit cards (Luhn-checked), SSN/Aadhaar/PAN, AWS keys and private keys are
+                      replaced before the request exits the network. The model sees the redacted text.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={detectInjection}
+                    onChange={(e) => setDetectInjection(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-emerald-500"
+                  />
+                  <span>
+                    <span className="block text-sm text-zinc-200">Flag prompt-injection attempts</span>
+                    <span className="mt-0.5 block text-xs text-zinc-500">
+                      Advisory only — suspicious requests are flagged in server logs, never blocked.
+                    </span>
+                  </span>
+                </label>
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader title="Alerts" description="Fired at 50%, 80% and 100% of any budget, once per month each" />
+              <CardBody>
+                <Label htmlFor="org-webhook">Webhook URL (Slack-compatible)</Label>
+                <Input
+                  id="org-webhook"
+                  type="url"
+                  value={webhook}
+                  onChange={(e) => setWebhook(e.target.value)}
+                  placeholder="https://hooks.slack.com/services/…"
+                />
+                <p className="mt-1 text-2xs text-zinc-600">
+                  The only outbound call OpenKey ever makes — and it goes to a URL you configured.
+                </p>
               </CardBody>
             </Card>
 

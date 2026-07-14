@@ -18,6 +18,7 @@ import type { BudgetLimitsMicro, BudgetScopeIds, BudgetService } from "./budget.
 import type { AliasEntry, ModelRegistry, ResolvedRoute } from "./registry.js";
 import type { SettleQueue } from "./settle.js";
 import type { CircuitBreaker } from "./breaker.js";
+import { runGuardrails, type OrgGuardrailSettings } from "../guardrails/index.js";
 import { chunkEnvelope, completionBody, sseHeaders, writeChunk, writeDone } from "./sse.js";
 
 // The most important file in the codebase: the exact request lifecycle from
@@ -112,7 +113,19 @@ export async function handleChatCompletion(
   });
   deps.auth.touchLastUsed(ctx.keyId);
 
-  // ---- 5. REDACT ---- (guardrail plugins land in M7; count stays 0 until then)
+  // ---- 5. REDACT (guardrails, per org policy) ----
+  // The redacted body is what goes upstream AND what is stored as the
+  // request payload. Advisory flags (injection heuristics) only log.
+  const guarded = await runGuardrails(
+    ctx.orgSettings as OrgGuardrailSettings,
+    body.messages,
+    { orgId: ctx.orgId, userId: ctx.userId, requestId },
+  );
+  if (guarded.flags.length > 0) {
+    request.log.warn({ requestId, flags: guarded.flags, userId: ctx.userId }, "guardrail flags raised");
+  }
+  const effectiveMessages = guarded.messages;
+  const redactionsApplied = guarded.redactionsApplied;
 
   // Everything after the reservation must settle or release it — even on crash
   // paths. `finalized` guards against double settlement.
@@ -158,12 +171,13 @@ export async function handleChatCompletion(
         ttftMs: opts.ttftMs,
         streamed: opts.streamed,
         approximateCost: usage.approximate,
-        redactionsApplied: 0,
+        redactionsApplied,
         createdAt: new Date(),
       },
       {
         requestId,
-        requestBody: body,
+        // Post-redaction — this is what the model actually saw.
+        requestBody: { ...body, messages: effectiveMessages },
         responseBody: opts.responseText === null ? null : { role: "assistant", content: opts.responseText },
         createdAt: new Date(),
       },
@@ -178,6 +192,7 @@ export async function handleChatCompletion(
       ctx,
       ids,
       body,
+      messages: effectiveMessages,
       entry,
       routes,
       requestId,
@@ -218,7 +233,7 @@ export async function handleChatCompletion(
         ttftMs: null,
         streamed: Boolean(body.stream),
         approximateCost: false,
-        redactionsApplied: 0,
+        redactionsApplied,
         createdAt: new Date(),
       });
     }
@@ -235,6 +250,7 @@ interface RunArgs {
   ctx: KeyContext;
   ids: BudgetScopeIds;
   body: ChatCompletionRequest;
+  messages: ChatCompletionRequest["messages"]; // post-guardrail
   entry: AliasEntry;
   routes: ResolvedRoute[];
   requestId: string;
@@ -274,7 +290,7 @@ async function runUpstream(args: RunArgs): Promise<unknown> {
 
     const adapterReq: AdapterRequest = {
       model: route.upstreamModel,
-      messages: body.messages,
+      messages: args.messages,
       maxTokens: args.maxOutputTokens,
       temperature: body.temperature,
       topP: body.top_p,

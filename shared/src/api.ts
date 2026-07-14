@@ -102,6 +102,9 @@ export const UpdateOrgBody = z.object({
       adminCanViewPrompts: z.boolean().optional(),
       storeRawPrompts: z.boolean().optional(),
       logRetentionDays: z.number().int().min(1).max(3650).optional(),
+      redactPii: z.boolean().optional(),
+      detectInjection: z.boolean().optional(),
+      alertWebhookUrl: z.string().url().nullable().optional(),
     })
     .optional(),
 });

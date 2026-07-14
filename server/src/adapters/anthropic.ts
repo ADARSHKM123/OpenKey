@@ -78,12 +78,19 @@ export class AnthropicAdapter implements ProviderAdapter {
     const cfg = parsed.data;
 
     const { system, turns } = splitMessages(req.messages);
+    // Long system prompts get an ephemeral cache point automatically: the
+    // second request with the same prefix reads it at the cached rate, and
+    // the dashboard shows the difference as money saved.
+    const systemField =
+      system.length > 4096
+        ? [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }]
+        : system;
     const body = {
       model: req.model,
       max_tokens: req.maxTokens,
       messages: turns,
       stream: true,
-      ...(system ? { system } : {}),
+      ...(system ? { system: systemField } : {}),
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       ...(req.topP !== undefined ? { top_p: req.topP } : {}),
       ...(req.stop !== undefined && req.stop.length > 0 ? { stop_sequences: req.stop } : {}),

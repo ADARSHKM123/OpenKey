@@ -13,6 +13,7 @@ import { orgRoutes } from "./org.js";
 import { logRoutes } from "./logs.js";
 import { budgetRequestRoutes } from "./budgetRequests.js";
 import { chatRoutes } from "./chat.js";
+import { oidcRoutes } from "./oidc.js";
 
 // The CONTROL PLANE (/api/*). Cookie+JWT auth, Prisma freely allowed — this
 // plane is never on the token hot path. Registered as one encapsulated
@@ -51,5 +52,6 @@ export function controlPlanePlugin(deps: ControlDeps) {
     await app.register(logRoutes(deps));
     await app.register(budgetRequestRoutes(deps));
     await app.register(chatRoutes(deps));
+    await app.register(oidcRoutes(deps));
   };
 }

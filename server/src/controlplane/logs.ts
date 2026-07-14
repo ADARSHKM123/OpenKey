@@ -86,7 +86,7 @@ export function logRoutes(deps: ControlDeps) {
       const days = Math.min(Number((request.query as { days?: string }).days) || 30, 365);
       const orgId = session.org;
 
-      const [totals, byDay, byTeam, byModel, topUsers, monthSpend] = await Promise.all([
+      const [totals, byDay, byTeam, byModel, topUsers, monthSpend, cacheSaved] = await Promise.all([
         deps.prisma.$queryRaw<
           { requests: bigint; spend: string | null; input_tokens: bigint | null; output_tokens: bigint | null; errors: bigint; p50: number | null; p95: number | null }[]
         >`
@@ -122,6 +122,22 @@ export function logRoutes(deps: ControlDeps) {
         deps.prisma.$queryRaw<{ spend: string | null }[]>`
           SELECT sum(cost_usd)::text AS spend FROM request_log
           WHERE org_id = ${orgId} AND created_at >= date_trunc('month', now())`,
+        // "Money saved by prompt caching": cached tokens billed at the cached
+        // rate instead of the full input rate, valued at current route pricing.
+        deps.prisma.$queryRaw<{ saved: string | null }[]>`
+          SELECT COALESCE(sum(
+            rl.cached_tokens::numeric *
+            GREATEST(mr.input_cost_per_1m - COALESCE(mr.cached_input_cost_per_1m, mr.input_cost_per_1m), 0)
+            / 1000000), 0)::text AS saved
+          FROM request_log rl
+          JOIN LATERAL (
+            SELECT input_cost_per_1m, cached_input_cost_per_1m FROM model_route
+            WHERE alias_id = rl.alias_id AND upstream_model = rl.upstream_model
+            LIMIT 1
+          ) mr ON true
+          WHERE rl.org_id = ${orgId}
+            AND rl.created_at > now() - (${days}::int * interval '1 day')
+            AND rl.cached_tokens > 0`,
       ]);
 
       const t = totals[0];
@@ -137,6 +153,7 @@ export function logRoutes(deps: ControlDeps) {
           latencyP95Ms: t?.p95 ?? null,
         },
         monthToDateUsd: monthSpend[0]?.spend ?? "0",
+        cacheSavedUsd: cacheSaved[0]?.saved ?? "0",
         byDay: byDay.map((d) => ({ day: d.day, spendUsd: d.spend, requests: Number(d.requests) })),
         byTeam: byTeam.map((r) => ({ teamId: r.team_id, teamName: r.team_name ?? "(no team)", spendUsd: r.spend })),
         byModel: byModel.map((m) => ({ provider: m.provider, model: m.upstream_model, spendUsd: m.spend, requests: Number(m.requests) })),

@@ -28,6 +28,9 @@ export interface KeyContext {
   budgets: { org: string | null; team: string | null; user: string | null; key: string | null };
   allowedModels: { key: string[]; team: string[] };
   contact: string | null;
+  // Org policy toggles (guardrails, raw-prompt retention) ride the cached
+  // context so the hot path never does extra I/O to read them.
+  orgSettings: Record<string, unknown>;
 }
 
 interface KeyRow {
@@ -47,6 +50,7 @@ interface KeyRow {
   team_budget: string | null;
   team_models: string[] | null;
   org_budget: string | null;
+  org_settings: unknown;
   contact: string | null;
 }
 
@@ -103,6 +107,7 @@ export class KeyAuthService {
              t.monthly_budget_usd::text AS team_budget,
              t.allowed_models AS team_models,
              o.monthly_budget_usd::text AS org_budget,
+             o.settings AS org_settings,
              (SELECT email FROM "user" ow
                WHERE ow.org_id = vk.org_id AND ow.role = 'OWNER'
                ORDER BY ow.created_at LIMIT 1) AS contact
@@ -138,6 +143,7 @@ export class KeyAuthService {
       },
       allowedModels: { key: row.key_models ?? [], team: row.team_models ?? [] },
       contact: row.contact,
+      orgSettings: (row.org_settings ?? {}) as Record<string, unknown>,
     };
   }
 

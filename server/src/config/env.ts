@@ -21,6 +21,14 @@ const EnvSchema = z.object({
   OPENKEY_ORG_NAME: z.string().min(1).default("OpenKey"),
   OPENKEY_ADMIN_EMAIL: z.string().email().default("admin@openkey.local"),
   OPENKEY_LOG_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
+  // Public base URL of this deployment (for OIDC redirect URIs).
+  OPENKEY_PUBLIC_URL: z.string().url().optional(),
+  // OIDC (Google Workspace, Microsoft Entra, Okta…). All three set = enabled.
+  OPENKEY_OIDC_ISSUER: z.string().url().optional(),
+  OPENKEY_OIDC_CLIENT_ID: z.string().optional(),
+  OPENKEY_OIDC_CLIENT_SECRET: z.string().optional(),
+  // IdP claim whose values are matched (case-insensitively) to team names.
+  OPENKEY_OIDC_GROUP_CLAIM: z.string().default("groups"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

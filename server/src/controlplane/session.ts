@@ -32,7 +32,8 @@ function cookieOpts(env: ControlDeps["env"], maxAgeSeconds: number) {
   };
 }
 
-async function issueSession(
+// Exported so the OIDC callback issues the exact same session as local login.
+export async function issueSession(
   deps: ControlDeps,
   reply: FastifyReply,
   user: { id: string; orgId: string; role: string },

@@ -17,6 +17,7 @@ interface Summary {
     latencyP95Ms: number | null;
   };
   monthToDateUsd: string;
+  cacheSavedUsd: string;
   byDay: { day: string; spendUsd: string; requests: number }[];
   byTeam: { teamId: string | null; teamName: string; spendUsd: string }[];
   byModel: { provider: string; model: string; spendUsd: string; requests: number }[];
@@ -86,6 +87,13 @@ export function AdminOverview() {
               <p className="tnum mt-1 text-3xl font-semibold tracking-tight text-zinc-50">
                 {formatUsd(data?.monthToDateUsd)}
               </p>
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500">Saved by prompt caching</p>
+              <p className="tnum mt-1 text-xl font-semibold tracking-tight text-accent">
+                {formatUsd(data?.cacheSavedUsd ?? 0)}
+              </p>
+              <p className="text-2xs text-zinc-600">last {days} days</p>
             </div>
             <div className="w-full max-w-xs">
               <BudgetBar
